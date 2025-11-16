@@ -91,14 +91,6 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  isDelivered: {
-    type: Boolean,
-    required: true,
-    default: false
-  },
-  deliveredAt: {
-    type: Date
-  },
   cancellationReason: {
     type: String,
     default: ''

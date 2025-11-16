@@ -35,6 +35,7 @@ const userRoutes = require('./routes/users');
 const orderRoutes = require('./routes/orders');
 const cartRoutes = require('./routes/cartRoutes');
 const upload = require('./routes/upload');
+const salesRoutes = require('./routes/salesRoutes');
 // const serviceRoutes = require('./routes/serviceRoutes'); // TODO: Fix serviceRoutes dependency issues
 
 // Mount routers
@@ -46,6 +47,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
 // Mount upload router under /api/v1 to match frontend calls (frontend uses /api/v1/upload)
 app.use('/api/v1/upload', upload);
+// Mount sales routes under /api/sales to make them accessible
+app.use('/api/sales', salesRoutes);
 // app.use('/api/services', serviceRoutes); // TODO: Fix serviceRoutes dependency issues
 
 // Routes

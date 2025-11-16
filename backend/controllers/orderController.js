@@ -11,8 +11,18 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id).populate('user', 'name email');
 
   if (!order) {
-    res.status(404);
-    throw new Error('Order not found');
+    return res.status(404).json({
+      success: false,
+      message: 'Order not found'
+    });
+  }
+
+  // Check if user is admin
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Not authorized to update order status'
+    });
   }
 
   // Validate status transition
@@ -26,25 +36,26 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
 
   if (status !== order.status) {
     if (!validTransitions[order.status]?.includes(status)) {
-      res.status(400);
-      throw new Error(`Cannot change status from ${order.status} to ${status}`);
+      return res.status(400).json({
+        success: false,
+        message: `Cannot change status from ${order.status} to ${status}`
+      });
     }
   }
 
   // Update order status and tracking info
   order.status = status;
   
-  // Update tracking info if provided
   if (trackingNumber) order.trackingNumber = trackingNumber;
   if (shippingCarrier) order.shippingCarrier = shippingCarrier;
   
-  // Update delivered status if applicable
   if (status === 'delivered') {
     order.isDelivered = true;
     order.deliveredAt = Date.now();
   }
 
   // Add to status history
+  order.statusHistory = order.statusHistory || [];
   order.statusHistory.push({
     status,
     changedBy: req.user._id,
@@ -57,13 +68,11 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
   try {
     // Send email notification to customer
     const user = await User.findById(order.user);
-    // Only send notifications if the user's email is verified
     if (user && user.emailVerified) {
       await new Email(user, updatedOrder).sendOrderStatusUpdate();
     }
   } catch (emailError) {
     console.error('Failed to send status update email:', emailError);
-    // Don't fail the request if email fails
   }
 
   res.json({
