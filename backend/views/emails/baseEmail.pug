@@ -1,0 +1,96 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    meta(name='viewport' content='width=device-width, initial-scale=1.0')
+    meta(http-equiv='X-UA-Compatible' content='ie=edge')
+    title= subject
+    style.
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        text-align: center;
+        padding: 20px 0;
+        border-bottom: 1px solid #eee;
+        margin-bottom: 30px;
+      }
+      .logo {
+        max-width: 200px;
+        height: auto;
+      }
+      .footer {
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #eee;
+        text-align: center;
+        font-size: 0.9em;
+        color: #777;
+      }
+      .button {
+        display: inline-block;
+        padding: 10px 20px;
+        background-color: #4CAF50;
+        color: white !important;
+        text-decoration: none;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .order-details {
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 4px;
+        margin: 20px 0;
+      }
+      .status {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.8em;
+      }
+      .status-pending {
+        background-color: #ffc107;
+        color: #000;
+      }
+      .status-processing {
+        background-color: #17a2b8;
+        color: #fff;
+      }
+      .status-shipped {
+        background-color: #007bff;
+        color: #fff;
+      }
+      .status-delivered {
+        background-color: #28a745;
+        color: #fff;
+      }
+      .status-cancelled {
+        background-color: #dc3545;
+        color: #fff;
+      }
+  body
+    .header
+      if process.env.APP_LOGO_URL
+        img(src=process.env.APP_LOGO_URL, alt=process.env.APP_NAME, class='logo')
+      else
+        h1= process.env.APP_NAME || 'E-Commerce Store'
+    
+    block content
+    
+    .footer
+      p &copy; #{new Date().getFullYear()} #{process.env.APP_NAME || 'E-Commerce Store'}. All rights reserved.
+      p #{process.env.APP_ADDRESS || ''}
+      p 
+        | Contact: 
+        a(href=`mailto:${process.env.APP_EMAIL || 'support@example.com'}`) #{process.env.APP_EMAIL || 'support@example.com'}
+      if process.env.UNSUBSCRIBE_URL
+        p 
+          | Don't want to receive these emails? 
+          a(href=process.env.UNSUBSCRIBE_URL) Unsubscribe
