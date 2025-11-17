@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  # Vite outputs to `dist` by default — Netlify publish should point to the build output.
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
