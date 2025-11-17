@@ -2,6 +2,30 @@ const Review = require('../models/Review');
 const asyncHandler = require('express-async-handler');
 const ErrorResponse = require('../utils/errorResponse');
 
+// Helper function to check and filter profanity (bad-words is an ES module)
+const checkProfanity = async (text) => {
+  try {
+    const { default: Filter } = await import('bad-words');
+    const filter = new Filter();
+    
+    // Check if text contains profanity
+    if (filter.isProfane(text)) {
+      return { hasProfanity: true, cleaned: null };
+    }
+    
+    // No profanity found, return cleaned text (for consistency)
+    return { hasProfanity: false, cleaned: text };
+  } catch (error) {
+    console.error('Error checking profanity:', error);
+    // Fallback: simple check if bad-words fails
+    const hasProfanity = /\b(fuck|shit|damn|hell|bitch|ass)\b/gi.test(text);
+    return { 
+      hasProfanity, 
+      cleaned: hasProfanity ? null : text 
+    };
+  }
+};
+
 // @desc    Get all reviews for a product
 // @route   GET /api/v1/products/:productId/reviews
 // @access  Public
@@ -27,6 +51,17 @@ exports.addReview = asyncHandler(async (req, res, next) => {
   // Add user and product to req.body
   req.body.user = req.user.id;
   req.body.product = req.params.productId;
+  
+  // Check for profanity and block if found
+  if (req.body.comment) {
+    const profanityCheck = await checkProfanity(req.body.comment);
+    if (profanityCheck.hasProfanity) {
+      return next(
+        new ErrorResponse('Your review contains inappropriate language. Please revise your comment.', 400)
+      );
+    }
+    req.body.comment = profanityCheck.cleaned;
+  }
 
   // Check if user already reviewed the product
   const existingReview = await Review.findOne({
@@ -79,6 +114,17 @@ exports.updateReview = asyncHandler(async (req, res, next) => {
     return next(
       new ErrorResponse('Not authorized to update this review', 401)
     );
+  }
+
+  // Check for profanity and block if found
+  if (req.body.comment) {
+    const profanityCheck = await checkProfanity(req.body.comment);
+    if (profanityCheck.hasProfanity) {
+      return next(
+        new ErrorResponse('Your review contains inappropriate language. Please revise your comment.', 400)
+      );
+    }
+    req.body.comment = profanityCheck.cleaned;
   }
 
   review = await Review.findByIdAndUpdate(req.params.id, req.body, {

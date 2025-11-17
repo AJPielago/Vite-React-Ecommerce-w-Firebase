@@ -8,6 +8,15 @@ const asyncHandler = require('express-async-handler');
 // @access  Private/Admin
 exports.updateOrderStatus = asyncHandler(async (req, res) => {
   const { status, trackingNumber, shippingCarrier, comment } = req.body;
+  
+  // Validate that status is provided
+  if (!status) {
+    return res.status(400).json({
+      success: false,
+      message: 'Status is required'
+    });
+  }
+
   const order = await Order.findById(req.params.id).populate('user', 'name email');
 
   if (!order) {
@@ -25,6 +34,9 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     });
   }
 
+  // Get current status (default to 'pending' if not set)
+  const currentStatus = order.status || 'pending';
+
   // Validate status transition
   const validTransitions = {
     pending: ['processing', 'cancelled'],
@@ -34,11 +46,21 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     cancelled: []
   };
 
-  if (status !== order.status) {
-    if (!validTransitions[order.status]?.includes(status)) {
+  // Validate status value
+  const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid status: ${status}. Valid statuses are: ${validStatuses.join(', ')}`
+    });
+  }
+
+  // Only validate transition if status is actually changing
+  if (status !== currentStatus) {
+    if (!validTransitions[currentStatus]?.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Cannot change status from ${order.status} to ${status}`
+        message: `Cannot change status from ${currentStatus} to ${status}. Valid transitions from ${currentStatus} are: ${validTransitions[currentStatus]?.join(', ') || 'none'}`
       });
     }
   }
@@ -65,19 +87,34 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
 
   const updatedOrder = await order.save();
 
+  // Send email notification to customer for every update
+  let emailSent = false;
+  let emailError = null;
   try {
-    // Send email notification to customer
-    const user = await User.findById(order.user);
-    if (user && user.emailVerified) {
+    const user = await User.findById(order.user).select('name email');
+    if (user?.email) {
+      console.log(`Attempting to send order status update email to: ${user.email}`);
       await new Email(user, updatedOrder).sendOrderStatusUpdate();
+      emailSent = true;
+      console.log(`Order status update email sent successfully to: ${user.email}`);
+    } else {
+      console.warn(`User ${order.user} has no email address, skipping email notification`);
     }
-  } catch (emailError) {
-    console.error('Failed to send status update email:', emailError);
+  } catch (err) {
+    emailError = err;
+    console.error('Failed to send status update email:', {
+      error: err.message,
+      stack: err.stack,
+      userEmail: order.user?.email || 'unknown',
+      orderId: order._id
+    });
   }
 
   res.json({
     success: true,
-    data: updatedOrder
+    data: updatedOrder,
+    emailSent,
+    emailError: emailError ? emailError.message : null
   });
 });
 

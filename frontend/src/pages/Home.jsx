@@ -1,26 +1,82 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 import ProductCard from '../components/ProductCard.jsx';
 
 const Home = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({});
+  const [hasMore, setHasMore] = useState(true);
+  const [viewMode, setViewMode] = useState('infinite'); // 'infinite' or 'pagination'
+  const observerTarget = useRef(null);
+
+  const fetchProducts = useCallback(async (pageNum = 1, append = false) => {
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const { data } = await api.get(`/products?page=${pageNum}&limit=12`);
+      
+      if (append) {
+        setProducts(prev => [...prev, ...(data.data || [])]);
+      } else {
+        setProducts(data.data || []);
+      }
+      
+      setPagination(data.pagination || {});
+      setHasMore(!!data.pagination?.next);
+      setPage(pageNum);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const { data } = await api.get('/products?limit=6');
-        setProducts(data.data);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-        setLoading(false);
+    fetchProducts(1, false);
+  }, [fetchProducts]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (viewMode !== 'infinite' || !hasMore || loading || loadingMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          fetchProducts(page + 1, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
       }
     };
+  }, [viewMode, hasMore, loading, loadingMore, page, fetchProducts]);
 
-    fetchProducts();
-  }, []);
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage !== page) {
+      fetchProducts(newPage, false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -46,26 +102,114 @@ const Home = () => {
 
       {/* Featured Products */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8">Featured Products</h2>
-        {loading ? (
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Featured Products</h2>
+          
+          {/* View Mode Toggle */}
+          <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('infinite')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'infinite'
+                  ? 'bg-pink-600 text-white'
+                  : 'text-gray-700 hover:text-gray-900'
+              }`}
+            >
+              Infinite Scroll
+            </button>
+            <button
+              onClick={() => setViewMode('pagination')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'pagination'
+                  ? 'bg-pink-600 text-white'
+                  : 'text-gray-700 hover:text-gray-900'
+              }`}
+            >
+              Pagination
+            </button>
+          </div>
+        </div>
+
+        {loading && products.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500"></div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((product) => (
-              <ProductCard key={product._id} product={product} />
-            ))}
+        ) : products.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No products found</p>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {products.map((product) => (
+                <ProductCard key={product._id} product={product} />
+              ))}
+            </div>
+
+            {/* Infinite Scroll Loading Indicator */}
+            {viewMode === 'infinite' && (
+              <div ref={observerTarget} className="mt-8">
+                {loadingMore && (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+                    <p className="mt-2 text-sm text-gray-500">Loading more products...</p>
+                  </div>
+                )}
+                {!hasMore && products.length > 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No more products to load</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {viewMode === 'pagination' && pagination && (pagination.prev || pagination.next) && (
+              <div className="flex justify-center items-center space-x-4 mt-8">
+                <button
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={!pagination.prev || loading}
+                  className={`px-4 py-2 border rounded-l-md text-sm font-medium transition-colors ${
+                    !pagination.prev || loading
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-300'
+                  }`}
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-700 text-sm">
+                    Page {page}
+                    {pagination.totalPages && ` of ${pagination.totalPages}`}
+                  </span>
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={!pagination.next || loading}
+                  className={`px-4 py-2 border border-l-0 rounded-r-md text-sm font-medium transition-colors ${
+                    !pagination.next || loading
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white text-gray-700 hover:bg-gray-50 border-gray-300'
+                  }`}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+
+            {/* View All Products Link */}
+            <div className="text-center mt-12">
+              <Link
+                to="/products"
+                className="inline-block bg-pink-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-pink-700 transition-colors"
+              >
+                View All Products
+              </Link>
+            </div>
+          </>
         )}
-        <div className="text-center mt-12">
-          <Link
-            to="/products"
-            className="inline-block bg-pink-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-pink-700 transition-colors"
-          >
-            View All Products
-          </Link>
-        </div>
       </div>
 
       {/* Features Section */}

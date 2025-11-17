@@ -26,57 +26,99 @@ class Email {
     }
 
     // Mailtrap for development
+    const host = process.env.EMAIL_HOST || 'sandbox.smtp.mailtrap.io';
+    const port = parseInt(process.env.EMAIL_PORT) || 2525;
+    const username = process.env.EMAIL_USERNAME || '';
+    const password = process.env.EMAIL_PASSWORD || '';
+
+    if (!username || !password) {
+      console.warn('Email credentials not configured. EMAIL_USERNAME and EMAIL_PASSWORD must be set in .env');
+    }
+
+    console.log(`Creating email transport: ${host}:${port} (user: ${username ? '***' : 'NOT SET'})`);
+
     return nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT,
+      host,
+      port,
       auth: {
-        user: process.env.EMAIL_USERNAME,
-        pass: process.env.EMAIL_PASSWORD,
+        user: username,
+        pass: password,
       },
     });
   }
 
   // Send the actual email
   async send(template, subject, attachments = []) {
-    // 1) Render HTML based on a pug template
-    const html = pug.renderFile(
-      `${__dirname}/../views/emails/${template}.pug`,
-      {
-        firstName: this.firstName,
-        order: this.order,
+    try {
+      // 1) Render HTML based on a pug template
+      const html = pug.renderFile(
+        `${__dirname}/../views/emails/${template}.pug`,
+        {
+          firstName: this.firstName,
+          order: this.order,
+          subject,
+        }
+      );
+
+      // 2) Define email options
+      const mailOptions = {
+        from: this.from,
+        to: this.to,
         subject,
-      }
-    );
+        html,
+        text: convert(html, {
+          wordwrap: 130,
+        }),
+        attachments: [...attachments],
+      };
 
-    // 2) Define email options
-    const mailOptions = {
-      from: this.from,
-      to: this.to,
-      subject,
-      html,
-      text: convert(html, {
-        wordwrap: 130,
-      }),
-      attachments: [...attachments],
-    };
+      console.log(`Sending email to: ${this.to}, subject: ${subject}`);
 
-    // 3) Create a transport and send email
-    await this.newTransport().sendMail(mailOptions);
+      // 3) Create a transport and send email
+      const transport = this.newTransport();
+      const info = await transport.sendMail(mailOptions);
+      
+      console.log(`Email sent successfully. Message ID: ${info.messageId}`);
+      return info;
+    } catch (error) {
+      console.error('Error in email send method:', {
+        error: error.message,
+        stack: error.stack,
+        to: this.to,
+        subject,
+        template
+      });
+      throw error;
+    }
   }
 
   async sendOrderStatusUpdate() {
-    // Generate PDF receipt
-    const receiptPath = path.join(__dirname, '../temp/receipts', `${this.order._id}.pdf`);
-    await generateReceipt(this.order, receiptPath);
+    let attachments = [];
+    let receiptPath = null;
 
-    // Prepare attachments
-    const attachments = [
-      {
-        filename: `receipt-${this.order._id}.pdf`,
-        path: receiptPath,
-        contentType: 'application/pdf',
-      },
-    ];
+    // Try to generate PDF receipt (optional - don't fail email if PDF fails)
+    try {
+      // Ensure temp/receipts directory exists
+      const receiptsDir = path.join(__dirname, '../temp/receipts');
+      if (!fs.existsSync(receiptsDir)) {
+        fs.mkdirSync(receiptsDir, { recursive: true });
+      }
+
+      receiptPath = path.join(receiptsDir, `${this.order._id}.pdf`);
+      await generateReceipt(this.order, receiptPath);
+
+      attachments = [
+        {
+          filename: `receipt-${this.order._id}.pdf`,
+          path: receiptPath,
+          contentType: 'application/pdf',
+        },
+      ];
+      console.log('PDF receipt generated successfully');
+    } catch (pdfError) {
+      console.warn('PDF receipt generation failed, sending email without attachment:', pdfError.message);
+      // Continue without PDF attachment
+    }
 
     try {
       await this.send(
@@ -85,15 +127,24 @@ class Email {
         attachments
       );
     } finally {
-      // Clean up the temporary PDF file
-      try {
-        if (fs.existsSync(receiptPath)) {
-          fs.unlinkSync(receiptPath);
+      // Clean up the temporary PDF file if it was created
+      if (receiptPath) {
+        try {
+          if (fs.existsSync(receiptPath)) {
+            fs.unlinkSync(receiptPath);
+          }
+        } catch (err) {
+          console.error('Error deleting temporary receipt file:', err);
         }
-      } catch (err) {
-        console.error('Error deleting temporary receipt file:', err);
       }
     }
+  }
+
+  async sendOrderConfirmation() {
+    await this.send(
+      'orderConfirmation',
+      `Thanks for your order #${this.order._id}`
+    );
   }
 }
 

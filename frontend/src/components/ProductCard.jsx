@@ -1,5 +1,6 @@
-import React, { useContext } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { StarIcon } from '@heroicons/react/20/solid';
 import { CartContext } from '../context/CartContext.jsx';
 
 const ProductCard = ({ product }) => {
@@ -8,6 +9,16 @@ const ProductCard = ({ product }) => {
   const handleAddToCart = () => {
     addToCart(product);
   };
+
+  const ratingValue = Number(product.averageRating || product.rating || 0);
+  const reviewCount = Number(product.reviewCount || 0);
+
+  const ratingLabel = useMemo(() => {
+    if (!ratingValue || ratingValue <= 0) {
+      return 'No ratings yet';
+    }
+    return `${ratingValue.toFixed(1)} (${reviewCount} review${reviewCount === 1 ? '' : 's'})`;
+  }, [ratingValue, reviewCount]);
 
   return (
     <div className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-300 hover:shadow-pink-100">
@@ -29,13 +40,26 @@ const ProductCard = ({ product }) => {
         <p className="text-muted-foreground text-sm mb-2 line-clamp-2">
           {product.description}
         </p>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <span className="text-2xl font-bold text-pink-600">
             ${product.price ? product.price.toFixed(2) : '0.00'}
           </span>
           <span className="text-sm text-muted-foreground">
             {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
           </span>
+        </div>
+        <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
+          <div className="flex items-center space-x-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <StarIcon
+                key={star}
+                className={`h-4 w-4 ${
+                  star <= Math.round(ratingValue) ? 'text-yellow-400' : 'text-gray-200'
+                }`}
+              />
+            ))}
+            <span className="ml-2 text-sm">{ratingLabel}</span>
+          </div>
         </div>
         <button
           onClick={handleAddToCart}

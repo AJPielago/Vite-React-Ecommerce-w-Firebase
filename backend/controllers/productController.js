@@ -49,7 +49,13 @@ exports.getProducts = asyncHandler(async (req, res, next) => {
   const products = await query;
 
   // Pagination result
-  const pagination = {};
+  const totalPages = Math.ceil(total / limit);
+  const pagination = {
+    total,
+    totalPages,
+    currentPage: page,
+    limit
+  };
 
   if (endIndex < total) {
     pagination.next = {

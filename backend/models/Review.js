@@ -69,4 +69,11 @@ reviewSchema.post('remove', function() {
   this.constructor.getAverageRating(this.product);
 });
 
+// Recalculate average after updates performed via findOneAndUpdate
+reviewSchema.post('findOneAndUpdate', async function(doc) {
+  if (doc) {
+    await doc.constructor.getAverageRating(doc.product);
+  }
+});
+
 module.exports = mongoose.model('Review', reviewSchema);

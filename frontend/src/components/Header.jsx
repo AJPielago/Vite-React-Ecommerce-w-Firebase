@@ -237,6 +237,12 @@ const Header = () => {
 
           <div className="flex items-center space-x-4">
             <Link
+              to="/home"
+              className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
+            >
+              Home
+            </Link>
+            <Link
               to="/products"
               className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
             >

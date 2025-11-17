@@ -34,6 +34,9 @@ const AdminDashboard = () => {
   });
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const [orderStatusChanges, setOrderStatusChanges] = useState({});
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -54,6 +57,7 @@ const AdminDashboard = () => {
       setProducts(productsRes.data.data);
       setOrders(ordersRes.data.data);
       setUsers(usersRes.data.data);
+      setOrderStatusChanges({});
       setLoading(false);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -62,42 +66,51 @@ const AdminDashboard = () => {
   };
 
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      setImageError('Please select an image file');
-      return;
-    }
-
-    // Validate file size (5MB max)
-    if (file.size > 5000000) {
-      setImageError('Image size should be less than 5MB');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('image', file);
-
-    setUploadingImage(true);
     setImageError('');
+    setUploadingImage(true);
 
     try {
-      const { data } = await api.post('/v1/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+      const uploadedImages = [];
+
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          setImageError('One or more files are not valid images.');
+          continue;
         }
-      });
-      
-      setNewProduct({
-        ...newProduct,
-        images: [...newProduct.images, data.data]
-      });
-      setUploadingImage(false);
+
+        if (file.size > 5000000) {
+          setImageError('Each image must be smaller than 5MB.');
+          continue;
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const { data } = await api.post('/v1/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+
+        if (data?.data) {
+          uploadedImages.push(data.data);
+        }
+      }
+
+      if (uploadedImages.length) {
+        setNewProduct((prev) => ({
+          ...prev,
+          images: [...prev.images, ...uploadedImages]
+        }));
+      }
     } catch (error) {
-      setImageError(error.response?.data?.error || 'Error uploading image');
+      setImageError(error.response?.data?.error || 'Error uploading image(s)');
+    } finally {
       setUploadingImage(false);
+      e.target.value = '';
     }
   };
 
@@ -106,6 +119,40 @@ const AdminDashboard = () => {
       ...newProduct,
       images: newProduct.images.filter((_, i) => i !== index)
     });
+  };
+
+  const toggleSelectProduct = (productId) => {
+    setSelectedProducts((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const toggleSelectAllProducts = () => {
+    if (selectedProducts.length === products.length) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(products.map((product) => product._id));
+    }
+  };
+
+  const handleBulkDeleteProducts = async () => {
+    if (!selectedProducts.length) return;
+    if (!window.confirm(`Delete ${selectedProducts.length} selected product(s)?`)) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        selectedProducts.map((productId) => api.delete(`/products/${productId}`))
+      );
+      setSelectedProducts([]);
+      fetchData();
+      alert('Selected products deleted successfully!');
+    } catch (error) {
+      alert('Error deleting selected products: ' + (error.response?.data?.error || 'Unknown error'));
+    }
   };
 
   const handleAddProduct = async (e) => {
@@ -157,13 +204,24 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleUpdateOrderStatus = async (orderId, isDelivered) => {
+  const handleUpdateOrderStatus = async (orderId, nextStatus) => {
+    if (!nextStatus) {
+      alert('Please select a status before updating.');
+      return;
+    }
+
     try {
-      await api.put(`/orders/${orderId}/deliver`);
+      setUpdatingOrderId(orderId);
+      await api.put(`/orders/${orderId}/status`, { status: nextStatus });
+      setOrderStatusChanges((prev) => ({ ...prev, [orderId]: undefined }));
       fetchData();
-      alert('Order status updated!');
+      alert('Order status updated and customer notified via email.');
     } catch (error) {
-      alert('Error updating order: ' + (error.response?.data?.error || 'Unknown error'));
+      console.error(error);
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Unknown error';
+      alert('Error updating order: ' + errorMessage);
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
@@ -442,14 +500,24 @@ const AdminDashboard = () => {
 
             {activeTab === 'products' && (
               <div>
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
                   <h2 className="text-xl font-semibold">Manage Products</h2>
-                  <button
-                    onClick={() => setShowAddProduct(!showAddProduct)}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
-                  >
-                    {showAddProduct ? 'Cancel' : 'Add Product'}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedProducts.length > 0 && (
+                      <button
+                        onClick={handleBulkDeleteProducts}
+                        className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+                      >
+                        Delete Selected ({selectedProducts.length})
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowAddProduct(!showAddProduct)}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                    >
+                      {showAddProduct ? 'Cancel' : 'Add Product'}
+                    </button>
+                  </div>
                 </div>
 
                 {showAddProduct && (
@@ -516,6 +584,7 @@ const AdminDashboard = () => {
                           <input
                             type="file"
                             accept="image/*"
+                            multiple
                             onChange={handleImageUpload}
                             className="hidden"
                             disabled={uploadingImage}
@@ -577,6 +646,13 @@ const AdminDashboard = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-6 py-3">
+                          <input
+                            type="checkbox"
+                            checked={products.length > 0 && selectedProducts.length === products.length}
+                            onChange={toggleSelectAllProducts}
+                          />
+                        </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
@@ -587,6 +663,13 @@ const AdminDashboard = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {products.map((product) => (
                         <tr key={product._id}>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedProducts.includes(product._id)}
+                              onChange={() => toggleSelectProduct(product._id)}
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">{product.name}</td>
                           <td className="px-6 py-4 whitespace-nowrap">${product.price}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{product.category}</td>
@@ -611,42 +694,74 @@ const AdminDashboard = () => {
               <div>
                 <h2 className="text-xl font-semibold mb-6">Manage Orders</h2>
                 <div className="space-y-4">
-                  {orders.map((order) => (
-                    <div key={order._id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-semibold">Order ID: {order._id}</p>
-                          <p className="text-sm text-gray-600">Customer: {order.user?.name}</p>
-                          <p className="text-sm text-gray-600">Total: ${order.totalPrice.toFixed(2)}</p>
+                  {orders.map((order) => {
+                    const selectedStatus = orderStatusChanges[order._id] ?? order.status;
+                    return (
+                      <div key={order._id} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <p className="font-semibold">Order ID: {order._id}</p>
+                            <p className="text-sm text-gray-600">Customer: {order.user?.name}</p>
+                            <p className="text-sm text-gray-600">Total: ${order.totalPrice.toFixed(2)}</p>
+                            <p className="text-sm text-gray-600">Placed: {new Date(order.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex flex-col gap-2 md:items-end">
+                            <span
+                              className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                order.isPaid ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                              }`}
+                            >
+                              {order.isPaid ? 'Paid' : 'Payment Pending'}
+                            </span>
+                            <span
+                              className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                                order.status === 'cancelled'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              Status: {order.status}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span
-                            className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                              order.isPaid ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}
-                          >
-                            {order.isPaid ? 'Paid' : 'Pending'}
-                          </span>
-                          <br />
-                          <span
-                            className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
-                              order.isDelivered ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                            }`}
-                          >
-                            {order.isDelivered ? 'Delivered' : 'Processing'}
-                          </span>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <div className="col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Update Status</label>
+                            <select
+                              value={selectedStatus}
+                              onChange={(e) =>
+                                setOrderStatusChanges((prev) => ({
+                                  ...prev,
+                                  [order._id]: e.target.value
+                                }))
+                              }
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            >
+                              {['pending', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
+                                <option key={status} value={status}>
+                                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-end">
+                            <button
+                              onClick={() => handleUpdateOrderStatus(order._id, selectedStatus)}
+                              disabled={updatingOrderId === order._id || selectedStatus === order.status}
+                              className={`w-full px-4 py-2 rounded-md text-white text-sm font-medium ${
+                                updatingOrderId === order._id || selectedStatus === order.status
+                                  ? 'bg-gray-300 cursor-not-allowed'
+                                  : 'bg-indigo-600 hover:bg-indigo-700'
+                              }`}
+                            >
+                              {updatingOrderId === order._id ? 'Updating...' : 'Save'}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      {!order.isDelivered && (
-                        <button
-                          onClick={() => handleUpdateOrderStatus(order._id, true)}
-                          className="mt-4 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 text-sm"
-                        >
-                          Mark as Delivered
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

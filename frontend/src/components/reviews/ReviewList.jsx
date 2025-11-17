@@ -156,16 +156,20 @@ export default function ReviewList({ productId }) {
                   </div>
                 </div>
 
-                {/* Edit/Delete buttons for review owner */}
-                {user?._id === review.user._id && (
+                {/* Edit/Delete buttons */}
+                {(user?._id === review.user._id || user?.role === 'admin') && (
                   <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEditReview(review)}
-                      className="text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      Edit
-                    </button>
-                    <span className="text-gray-300">|</span>
+                    {user?._id === review.user._id && (
+                      <button
+                        onClick={() => handleEditReview(review)}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {user?._id === review.user._id && (
+                      <span className="text-gray-300">|</span>
+                    )}
                     <button
                       onClick={() => handleDeleteReview(review._id)}
                       className="text-sm text-red-600 hover:text-red-800"

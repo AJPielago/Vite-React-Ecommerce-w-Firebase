@@ -16,7 +16,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const redirect = new URLSearchParams(location.search).get('redirect') || '/';
+  const redirect = new URLSearchParams(location.search).get('redirect') || '/home';
 
   const handleSubmit = async (e) => {
     e.preventDefault();

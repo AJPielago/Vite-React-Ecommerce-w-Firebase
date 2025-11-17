@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -30,22 +30,20 @@ import { DateRange, BarChart as BarChartIcon, ShowChart as LineChartIcon } from 
 import api from '../../utils/api';
 
 // Helper function to format date based on groupBy
-const formatDateLabel = (dateString, groupBy) => {
-  const date = parseISO(dateString);
-  switch (groupBy) {
-    case 'day':
-      return format(date, 'MMM d, yyyy');
-    case 'week':
-      return `Week ${format(date, 'w, MMM yyyy')}`;
-    case 'month':
-    default:
-      return format(date, 'MMM yyyy');
-  }
-};
+const formatDateLabel = (label) => label;
 
 const SalesAnalytics = () => {
   const theme = useTheme();
-  const [data, setData] = useState([]);
+  const [chartPayload, setChartPayload] = useState({
+    labels: [],
+    sales: [],
+    orders: []
+  });
+  const [summary, setSummary] = useState({
+    totalSales: 0,
+    totalOrders: 0,
+    averageOrderValue: 0
+  });
   const [startDate, setStartDate] = useState(subMonths(new Date(), 12));
   const [endDate, setEndDate] = useState(new Date());
   const [groupBy, setGroupBy] = useState('month');
@@ -58,7 +56,7 @@ const SalesAnalytics = () => {
     setError('');
     
     try {
-      const { data } = await api.get('/sales/analytics', {
+      const response = await api.get('/sales/analytics', {
         params: {
           startDate: format(startDate, 'yyyy-MM-dd'),
           endDate: format(endDate, 'yyyy-MM-dd'),
@@ -66,7 +64,21 @@ const SalesAnalytics = () => {
         }
       });
 
-      setData(data.data);
+      const payload = response?.data?.data || {};
+      const datasets = Array.isArray(payload.datasets) ? payload.datasets : [];
+      const salesDataset = datasets.find(dataset => dataset.label?.toLowerCase() === 'sales');
+      const ordersDataset = datasets.find(dataset => dataset.label?.toLowerCase() === 'orders');
+
+      setChartPayload({
+        labels: Array.isArray(payload.labels) ? payload.labels : [],
+        sales: Array.isArray(salesDataset?.data) ? salesDataset.data : [],
+        orders: Array.isArray(ordersDataset?.data) ? ordersDataset.data : []
+      });
+      setSummary({
+        totalSales: response?.data?.summary?.totalSales || 0,
+        totalOrders: response?.data?.summary?.totalOrders || 0,
+        averageOrderValue: response?.data?.summary?.averageOrderValue || 0
+      });
     } catch (err) {
       console.error('Error fetching sales data:', err);
       setError('Failed to load sales data. Please try again.');
@@ -77,41 +89,26 @@ const SalesAnalytics = () => {
 
   // Prepare chart data for MUI X-Charts
   const chartData = useMemo(() => {
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return { xAxis: [], series: [] };
+    if (!chartPayload.labels.length) {
+      return null;
     }
-
-    // Create a safe copy of the data and sort it
-    const safeData = Array.isArray(data) ? [...data] : [];
-    const sortedData = safeData.sort((a, b) => {
-      try {
-        return new Date(a.date || 0) - new Date(b.date || 0);
-      } catch (e) {
-        return 0;
-      }
-    });
 
     return {
       xAxis: [{
-        data: sortedData.map(item => {
-          try {
-            return item && item.date ? new Date(item.date) : new Date();
-          } catch (e) {
-            return new Date();
-          }
-        }),
-        scaleType: 'time',
-        valueFormatter: (date) => formatDateLabel(date, groupBy),
+        id: 'dates',
+        data: chartPayload.labels,
+        scaleType: 'band',
+        valueFormatter: (label) => formatDateLabel(label, groupBy),
       }],
       series: [{
-        type: chartType === 'line' ? 'line' : 'bar',
-        data: sortedData.map(item => item?.totalSales || 0),
+        id: 'sales',
+        data: chartPayload.sales,
         label: 'Sales',
         color: theme.palette.primary.main,
         valueFormatter: (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       }],
     };
-  }, [data, groupBy, chartType, theme.palette.primary.main]);
+  }, [chartPayload, groupBy, theme.palette.primary.main]);
 
   useEffect(() => {
     fetchSalesData();
@@ -186,6 +183,33 @@ const SalesAnalytics = () => {
             </Alert>
           )}
           
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary">Total Revenue</Typography>
+                <Typography variant="h6">
+                  ${Number(summary.totalSales || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary">Total Orders</Typography>
+                <Typography variant="h6">
+                  {Number(summary.totalOrders || 0).toLocaleString()}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" color="text.secondary">Avg Order Value</Typography>
+                <Typography variant="h6">
+                  ${Number(summary.averageOrderValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+
           <Box sx={{ width: '100%', height: 400, position: 'relative' }}>
             {loading ? (
               <Box
@@ -196,25 +220,31 @@ const SalesAnalytics = () => {
               >
                 <CircularProgress />
               </Box>
-            ) : data.length > 0 ? (
+            ) : chartData ? (
               <Box sx={{ width: '100%', height: '100%' }}>
-                <LineChart
-                  xAxis={[{
-                    data: chartData.xAxis[0].data,
-                    scaleType: 'time',
-                    valueFormatter: (date) => formatDateLabel(date, groupBy),
-                  }]}
-                  series={[{
-                    data: chartData.series[0].data,
-                    label: 'Sales',
-                    color: theme.palette.primary.main,
-                  }]}
-                  yAxis={[{
-                    label: 'Sales ($)',
-                    valueFormatter: (value) => `$${value.toLocaleString()}`,
-                  }]}
-                  margin={{ left: 80, right: 30, top: 20, bottom: 60 }}
-                />
+                {chartType === 'bar' ? (
+                  <BarChart
+                    xAxis={chartData.xAxis}
+                    series={chartData.series}
+                    height={chartHeight}
+                    yAxis={[{
+                      label: 'Sales ($)',
+                      valueFormatter: (value) => `$${Number(value || 0).toLocaleString()}`,
+                    }]}
+                    margin={{ left: 80, right: 30, top: 20, bottom: 60 }}
+                  />
+                ) : (
+                  <LineChart
+                    xAxis={chartData.xAxis}
+                    series={chartData.series}
+                    height={chartHeight}
+                    yAxis={[{
+                      label: 'Sales ($)',
+                      valueFormatter: (value) => `$${Number(value || 0).toLocaleString()}`,
+                    }]}
+                    margin={{ left: 80, right: 30, top: 20, bottom: 60 }}
+                  />
+                )}
               </Box>
             ) : (
               <Box

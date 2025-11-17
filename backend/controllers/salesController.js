@@ -57,14 +57,13 @@ exports.getSalesAnalytics = asyncHandler(async (req, res, next) => {
   const salesData = await Order.aggregate([
     {
       $match: {
-        status: { $in: ['delivered', 'completed'] },
         createdAt: { $gte: start.toDate(), $lte: end.toDate() }
       }
     },
     {
       $group: {
         _id: groupFormat,
-        totalSales: { $sum: '$totalAmount' },
+        totalSales: { $sum: '$totalPrice' },
         count: { $sum: 1 },
         date: { $first: '$createdAt' }
       }
@@ -185,7 +184,6 @@ exports.getMonthlySales = asyncHandler(async (req, res, next) => {
   const monthlySales = await Order.aggregate([
     {
       $match: {
-        status: { $in: ['delivered', 'completed'] },
         createdAt: {
           $gte: new Date(`${currentYear}-01-01`),
           $lte: new Date(`${currentYear}-12-31`)
@@ -195,7 +193,7 @@ exports.getMonthlySales = asyncHandler(async (req, res, next) => {
     {
       $group: {
         _id: { $month: '$createdAt' },
-        totalSales: { $sum: '$totalAmount' },
+        totalSales: { $sum: '$totalPrice' },
         orderCount: { $sum: 1 }
       }
     },

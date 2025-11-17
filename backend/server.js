@@ -36,6 +36,7 @@ const orderRoutes = require('./routes/orders');
 const cartRoutes = require('./routes/cartRoutes');
 const upload = require('./routes/upload');
 const salesRoutes = require('./routes/salesRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 // const serviceRoutes = require('./routes/serviceRoutes'); // TODO: Fix serviceRoutes dependency issues
 
 // Mount routers
@@ -49,6 +50,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/v1/upload', upload);
 // Mount sales routes under /api/sales to make them accessible
 app.use('/api/sales', salesRoutes);
+app.use('/api/reviews', reviewRoutes);
 // app.use('/api/services', serviceRoutes); // TODO: Fix serviceRoutes dependency issues
 
 // Routes

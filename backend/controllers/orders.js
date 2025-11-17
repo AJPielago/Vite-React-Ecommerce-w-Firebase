@@ -2,6 +2,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
+const User = require('../models/User');
+const { Email } = require('../utils/emailService');
 
 // @desc    Create new order
 // @route   POST /api/v1/orders
@@ -38,6 +40,27 @@ exports.addOrderItems = asyncHandler(async (req, res, next) => {
   });
 
   const createdOrder = await order.save();
+
+  // Send confirmation email via Mailtrap (dev) or configured provider
+  let emailSent = false;
+  try {
+    const user = await User.findById(req.user._id).select('name email emailVerified');
+    if (user?.email) {
+      console.log(`Attempting to send order confirmation email to: ${user.email}`);
+      await new Email(user, createdOrder).sendOrderConfirmation();
+      emailSent = true;
+      console.log(`Order confirmation email sent successfully to: ${user.email}`);
+    } else {
+      console.warn(`User ${req.user._id} has no email address, skipping confirmation email`);
+    }
+  } catch (emailErr) {
+    console.error('Order confirmation email failed:', {
+      error: emailErr?.message || emailErr,
+      stack: emailErr?.stack,
+      userId: req.user._id,
+      orderId: createdOrder._id
+    });
+  }
 
   res.status(201).json({
     success: true,
